@@ -9,7 +9,8 @@ _PREFIJO_DOI = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", re.IGNORE
 
 
 def normalizar_doi(doi: str) -> str:
-    """Devuelve el DOI sin prefijo de URL y en minúsculas.
+    """
+    Devuelve el DOI sin prefijo de URL y en minúsculas.
 
     Los DOI no distinguen mayúsculas, así que «10.1000/ABC» y
     «https://doi.org/10.1000/abc» identifican el mismo artículo.
