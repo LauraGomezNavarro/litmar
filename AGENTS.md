@@ -144,7 +144,7 @@ del Mar, tres clases, imparte Roberto Bada). Las diapositivas están en `docs/`
 
 ```bash
 uv sync                          # instala todo, incluido el grupo dev (pytest, ruff, streamlit)
-uv run pytest                    # tests (sin red; ~204, menos de 1 s)
+uv run pytest                    # tests (sin red; ~229, unos segundos)
 uv run ruff check --fix          # lint (reglas E, W, F, I, UP, B; línea de 100)
 uv run ruff format               # formato
 uv run litmar --help             # CLI
@@ -175,12 +175,19 @@ src/litmar/
                      salida en tabla), exportar, ui
   configuracion.py   FUENTES, fuentes_disponibles(), crear_fuente(nombre),
                      id_fuente()/nombre_fuente() («Europe PMC» ↔ «europepmc»)
+  llm.py             crear_modelo(entorno=None): LITMAR_MODELO → init_chat_model,
+                     con clave explícita, InMemoryRateLimiter y max_retries=2;
+                     ErrorConfiguracion
+  resumen.py         ResumenArticulo (Pydantic) y resumir(articulo, pregunta,
+                     modelo) con with_structured_output; sin abstract → None
+                     sin llamar al modelo
   ui.py              Streamlit: filas(), app()
   fuentes/
     base.py          Fuente (ABC): buscar(consulta, n, *, desde=None) abstracto;
                      _admite (validez + año); _get/_get_json con reintentos
     openalex.py crossref.py europepmc.py arxiv.py pangaea.py zotero.py
 docs/                diapositivas del curso (PDF)
+ejemplos/            scripts de las prácticas (resumir.py: Práctica 1, usa el LLM real)
 tests/
   conftest.py        fixture hacer_articulo (fábrica de Articulo válidos)
   test_*.py          uno por módulo/fuente; test_ui.py usa streamlit.testing
@@ -280,7 +287,21 @@ en `.env.example`.
 - **argparse**: `nargs=REMAINDER` en un subcomando no captura opciones que
   empiezan por `--`; por eso `litmar ui` usa `parse_known_args`.
 - **`.env` solo se carga en `litmar.main()`** (la entrada del comando), no en
-  `cli.main(argv)`: así los tests no leen el `.env` real.
+  `cli.main(argv)`: así los tests no leen el `.env` real. Excepción:
+  `llm.crear_modelo()` sin argumentos también lo carga (para scripts como
+  `ejemplos/`); los tests le pasan un diccionario `entorno`.
+- **`load_dotenv("")`** no desactiva la búsqueda: con ruta vacía busca un `.env`
+  desde la carpeta del código y puede cargar el `.env` real. En tests, sustituye
+  `dotenv.load_dotenv`.
+- **Gemini responde 503 «model is currently experiencing high demand»** en
+  momentos de saturación (no es la clave ni el límite por minuto). Es temporal:
+  reintentar más tarde. Una llamada puede tardar varios minutos, porque
+  `ChatGoogleGenerativeAI` reintenta 6 veces por defecto (`max_retries`), y esos
+  reintentos no pasan por nuestro limitador y gastan cuota (luego llega 429).
+  Por eso `crear_modelo()` fija `max_retries=2`.
+- **`init_chat_model("modelo")` sin `proveedor:`** adivina el proveedor por el
+  nombre (p. ej. `gemini-…` → Vertex AI, que no está instalado). Por eso
+  `crear_modelo()` exige el formato `proveedor:modelo`.
 - **`ruff format` también formatea los bloques de Python del README** (alinea
   distinto los comentarios). Es normal ver el README en el diff tras formatear.
 - **`Retry-After: 0`** es válido: comprobar con `is None`, no con `or`.

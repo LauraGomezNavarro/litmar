@@ -86,3 +86,17 @@ el nombre estándar de cada proveedor (`GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`),
 que es el que leen las librerías de LangChain. Sustituye a la idea de
 `GEMINI_API_KEY` de la Clase 1. Las diapositivas también nombran
 `CROSSREF_MAILTO`, así que no se renombra a `LITMAR_EMAIL`.
+
+### D-15 · `crear_modelo()`: solo `google_genai` y `anthropic`, clave explícita y 10 llamadas/min — 2026-11-18
+`LITMAR_MODELO` debe ser `proveedor:modelo` con un proveedor de la lista `CLAVES`
+de `llm.py`: así se puede decir exactamente qué clave falta y dónde conseguirla
+(sin prefijo, `init_chat_model` adivina el proveedor y da errores confusos).
+Añadir otro proveedor = una línea en `CLAVES` + su paquete `langchain-…`. La
+clave se pasa a `init_chat_model` como `api_key` en lugar de dejar que la lea
+cada librería, para que `crear_modelo(entorno)` funcione con un diccionario en
+los tests. Límite: `InMemoryRateLimiter` de LangChain, por defecto 10 llamadas
+por minuto (margen para el plan gratuito de Gemini), configurable con
+`LITMAR_LLAMADAS_POR_MINUTO`; `max_bucket_size=1` para que no haya ráfagas. Al
+superarlo, espera en vez de fallar con 429. Reintentos de la librería del
+proveedor limitados a 2 (`MAX_REINTENTOS`): Gemini hace 6 por defecto, un fallo
+tardaba ~6 min y los reintentos gastan cuota sin pasar por el limitador.

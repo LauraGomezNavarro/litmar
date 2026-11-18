@@ -13,9 +13,10 @@ _Actualizado: 2026-11-18._
   de la Clase 2 en `docs/Clase2.pdf`.
 - **Curso**: Clase 1 (*Busca*, 17/11/2026) completa respecto a las
   diapositivas. La siguiente es la Clase 2 (*Lee*), el **18/11/2026**; sus
-  diapositivas están en `docs/Clase2.pdf` y su plan, abajo. **Nada de la Clase 2
-  está empezado.**
-- **Calidad**: 204 tests pasan, sin red, en menos de 1 s; `ruff check` y
+  diapositivas están en `docs/Clase2.pdf` y su plan, abajo. Hechos los pasos 1-3
+  (`.env.example`, `resumir()` en `resumen.py`, `crear_modelo()` en `llm.py`);
+  el resto, sin empezar.
+- **Calidad**: 229 tests pasan, sin red; `ruff check` y
   `ruff format --check` en verde.
 - **PRs abiertas**: ninguna.
 - **Funciona**:
@@ -28,7 +29,14 @@ _Actualizado: 2026-11-18._
   - interfaz web con Streamlit: búsqueda en varias fuentes, tabla y descargas
     BibTeX/CSV;
   - configuración por `.env` (plantilla en `.env.example`; todo opcional salvo
-    Zotero).
+    Zotero);
+  - `resumir(articulo, pregunta, modelo)` → `ResumenArticulo` (Pydantic, con
+    `with_structured_output`; dependencia `langchain-core`). Sin abstract,
+    devuelve `None` sin llamar al modelo;
+  - `crear_modelo()` (`llm.py`): lee `LITMAR_MODELO` del `.env`, lo crea con
+    `init_chat_model` (Gemini o Anthropic) y limita las llamadas por minuto
+    (D-15); si falta el modelo o la clave, `ErrorConfiguracion` dice qué poner.
+    Probado con Gemini real (ver registro de hoy).
 
 ## Próximos pasos
 
@@ -61,21 +69,22 @@ diapositiva una columna «En qué fijarse»: el resultado debe superarla. Consul
 la documentación actual de LangChain, LangGraph y deepagents antes de programar
 (cambian rápido) y proponer plan antes de código.
 
-1. [ ] **`.env`** (diapositiva 4): `LITMAR_MODELO=google_genai:gemini-3.8-flash`
+1. [x] **`.env`** (hecho 2026-11-18 en `.env.example`) (diapositiva 4): `LITMAR_MODELO=google_genai:gemini-3.8-flash`
    + `GOOGLE_API_KEY`, o `anthropic:claude-sonnet-5-5` + `ANTHROPIC_API_KEY`. El
    plan gratuito de Gemini tiene límites por minuto (429) y Google puede usar lo
    enviado: solo datos públicos.
-2. [ ] **Resumen estructurado**: `resumir(articulo, pregunta, modelo)` → objeto
+2. [x] **Resumen estructurado** (hecho 2026-11-18, `src/litmar/resumen.py`;
+   probado con Gemini real): `resumir(articulo, pregunta, modelo)` → objeto
    Pydantic `ResumenArticulo` (objetivo, método, hallazgos, relevancia 1-5
    respecto a la pregunta, limitaciones) con `with_structured_output`. Cada
    campo con descripción (el modelo la lee). Sin resumen → no llamar al modelo.
    Test con modelo falso, sin clave ni red.
-3. [ ] **Modelo intercambiable**: `src/litmar/llm.py` con `crear_modelo()` que lee
+3. [x] **Modelo intercambiable** (hecho 2026-11-18; D-15): `src/litmar/llm.py` con `crear_modelo()` que lee
    `LITMAR_MODELO` y usa `init_chat_model`; límite de llamadas por minuto para el
    plan gratuito; si falta la clave, error claro que diga qué poner en el `.env`.
    Ningún nombre de modelo ni clave en el código; cambiar de modelo = cambiar el
    `.env`.
-4. [ ] **Práctica 1** de los alumnos: `ejemplos/resumir.py` (busca 3 artículos y
+4. [x] **Práctica 1** de los alumnos (hecha 2026-11-18 como referencia): `ejemplos/resumir.py` (busca 3 artículos y
    los resume). Puede convenir tenerlo hecho como referencia.
 5. [ ] **Flujo LangGraph** (`src/litmar/flujo.py`): estado `TypedDict`
    (`EstadoRevision`: pregunta, artículos, resúmenes, informe…); nodos
@@ -133,6 +142,51 @@ contra esto.
   proponer su hook `_antes_de_peticion` en `Fuente`.
 
 ## Registro de sesiones
+
+### 2026-11-18 — Sesión 3: `resumir()` y `crear_modelo()` (pasos 1-3 de la Clase 2)
+
+- **Paso 3**, prompt de la diapositiva: nuevo `src/litmar/llm.py` con
+  `crear_modelo(entorno=None)` y `ErrorConfiguracion`. Detalles y porqué en
+  D-15. Dependencias nuevas: `langchain`, `langchain-google-genai`,
+  `langchain-anthropic`. `.env.example` y README con `LITMAR_MODELO`,
+  `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY` y `LITMAR_LLAMADAS_POR_MINUTO` (paso 1).
+- `tests/test_llm.py` (18 tests): crea objetos de modelo reales con claves
+  falsas, sin llamarlos; comprueba límite, errores y que con `entorno` no se lee
+  el `.env`. Dos trampas nuevas en `AGENTS.md` §9 (`load_dotenv("")` y
+  `init_chat_model` sin proveedor).
+- `resumir()` ahora envía también los autores (línea `Autores:` separada del
+  año), a petición del usuario.
+- **Prueba real** con el `.env` del usuario (`google_genai:gemini-3.8-flash`):
+  un artículo de Europe PMC sobre restauración de Posidonia. El resumen
+  estructurado es fiel al original, no inventa cifras (dice que el resumen no
+  las da), «No se indican en el resumen» en limitaciones, relevancia 3 (indirecta)
+  para «¿Cuánto carbono almacenan las praderas de Posidonia?». El primer intento
+  falló con 503 «high demand» de Google; el segundo tardó 133 s (saturación).
+- **Práctica 1** hecha como referencia: `ejemplos/resumir.py` (busca en OpenAlex
+  y Europe PMC, toma 3 artículos con resumen y los resume; si uno falla, sigue
+  con los demás). Ejecutado con Gemini real: la búsqueda funcionó, pero los tres
+  resúmenes fallaron (503 y luego `GoogleRateLimitError`) y tardó ~6 min,
+  porque `ChatGoogleGenerativeAI` reintenta 6 veces por defecto (Anthropic, 2).
+  Por eso, con el visto bueno del usuario, `crear_modelo()` pasa
+  `max_retries=MAX_REINTENTOS` (2) a cualquier proveedor (añadido a D-15).
+
+- Prompt literal de la diapositiva 11. Nuevo `src/litmar/resumen.py`:
+  `ResumenArticulo` (objetivo, metodo, hallazgos, relevancia 1-5 con `ge`/`le`,
+  limitaciones; cada campo con `description`, que el modelo lee) y
+  `resumir(articulo, pregunta, modelo)`, que usa `with_structured_output`.
+- Decisión: sin abstract (o solo espacios) devuelve `None` y no llama al modelo.
+  Así no inventa método ni hallazgos a partir del título, y el futuro nodo
+  `filtrar` puede descartarlos.
+- Se añadió `langchain-core` como dependencia (trae Pydantic). `init_chat_model`
+  (paquete `langchain`) queda para el paso 3.
+- `tests/test_resumen.py`: modelo falso (clase con `with_structured_output` que
+  devuelve un `RunnableLambda`), sin clave ni red. Comprueba el objeto devuelto,
+  lo que se envía al modelo, que sin resumen no se le llama, que todos los
+  campos tienen descripción y el rango de `relevancia`.
+- Pendiente: «Ejecútalo con un artículo y compáralo con el original» necesita un
+  modelo real (paso 3, `crear_modelo()`).
+- Al reinstalar el entorno, el primer `pytest` falló por timeout en `test_ui.py`
+  (arranque en frío de Streamlit); al repetirlo pasó (trampa ya en §9).
 
 ### 2026-11-18 — Sesión 2: comprobación de los hooks
 

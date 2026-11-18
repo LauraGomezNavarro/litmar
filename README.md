@@ -37,6 +37,9 @@ arXiv y PANGAEA. `.env.example` explica cada variable:
 | `CROSSREF_MAILTO` | Crossref | Entrar en el *polite pool*, con límites más altos |
 | `ZOTERO_USER_ID` o `ZOTERO_GROUP_ID` | Zotero | Biblioteca en la que buscar (sin ella, Zotero no aparece) |
 | `ZOTERO_API_KEY` | Zotero | Solo para bibliotecas privadas |
+| `LITMAR_MODELO` | LLM | Modelo para resumir, como `proveedor:modelo` (`google_genai` o `anthropic`) |
+| `GOOGLE_API_KEY` o `ANTHROPIC_API_KEY` | LLM | Clave del proveedor elegido |
+| `LITMAR_LLAMADAS_POR_MINUTO` | LLM | Máximo de llamadas al modelo por minuto (por defecto 10, para el plan gratuito de Gemini) |
 
 `.env` no se sube a git. Las variables que ya estén definidas en el entorno
 tienen prioridad sobre las del fichero.
@@ -157,6 +160,29 @@ El JSON es una lista de artículos con `title`, `authors`, `year`, `doi`,
 `journal`, `abstract` y `citations`. Conserva los caracteres Unicode y el orden
 de inserción. Al cargar, `abstract` y `citations` son opcionales y toman los
 valores `""` y `0`.
+
+### Resumen estructurado con un LLM
+
+`resumir(articulo, pregunta, modelo)` pide a un modelo de chat de LangChain un
+`ResumenArticulo` (objetivo, método, hallazgos, relevancia del 1 al 5 respecto a
+la pregunta y limitaciones) con `with_structured_output`. El modelo devuelve un
+objeto validado por Pydantic, no texto libre. Si el artículo no tiene resumen,
+devuelve `None` sin llamar al modelo.
+
+`crear_modelo()` (en `litmar.llm`) crea ese modelo a partir de `LITMAR_MODELO`
+con `init_chat_model` de LangChain, limitado a `LITMAR_LLAMADAS_POR_MINUTO`. Si
+falta el modelo o la clave, lanza `ErrorConfiguracion` con un mensaje que dice
+qué línea añadir al `.env`.
+
+```python
+from litmar.llm import crear_modelo
+from litmar.resumen import resumir
+
+modelo = crear_modelo()  # lee el .env
+resumen = resumir(articulo, "¿Cuánto carbono almacena la posidonia?", modelo)
+if resumen is not None:
+    print(resumen.relevancia, resumen.hallazgos)
+```
 
 ## Fuentes
 
