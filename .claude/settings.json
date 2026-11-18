@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(uv sync)",
+      "Bash(uv run pytest)",
+      "Bash(uv run pytest *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.[a-df-z0-9_.-]*)",
+      "Read(**/.env.e[a-wyz0-9_.-]*)",
+      "Read(**/.env.ex[b-z0-9_.-]*)",
+      "Read(**/.env.exa[a-ln-z0-9_.-]*)",
+      "Read(**/.env.exam[a-oq-z0-9_.-]*)",
+      "Read(**/.env.examp[a-km-z0-9_.-]*)",
+      "Read(**/.env.exampl[a-df-z0-9_.-]*)",
+      "Read(**/.env.example?*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/contexto-inicial.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/recordar-progreso.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

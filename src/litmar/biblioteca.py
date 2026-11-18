@@ -1,11 +1,17 @@
-"""Colección de artículos sin duplicados y exportación a BibTeX."""
+"""Colección de artículos sin duplicados y exportación a BibTeX y CSV."""
 
 from __future__ import annotations
 
+import csv
+import io
+import json
+import os
 import re
 import string
+import tempfile
 import unicodedata
 from collections.abc import Iterable, Iterator
+from dataclasses import asdict, fields
 from pathlib import Path
 
 from litmar.articulo import Articulo, apellido, normalizar_doi
@@ -69,6 +75,71 @@ class Biblioteca:
     def exportar_bibtex(self, ruta: str | Path) -> None:
         """Escribe la biblioteca en un fichero .bib (UTF-8)."""
         Path(ruta).write_text(self.a_bibtex(), encoding="utf-8")
+
+    def a_csv(self) -> str:
+        """Devuelve los artículos como CSV, con las mismas columnas que el JSON.
+
+        Los autores van en una sola celda separados por «; ».
+        """
+        salida = io.StringIO()
+        escritor = csv.writer(salida)
+        escritor.writerow(campo.name for campo in fields(Articulo))
+        for articulo in self:
+            fila = asdict(articulo)
+            fila["authors"] = "; ".join(articulo.authors)
+            escritor.writerow(fila.values())
+        return salida.getvalue()
+
+    def guardar(self, ruta: str | Path) -> None:
+        """Guarda todos los metadatos en JSON, sustituyendo el archivo de forma atómica."""
+        ruta = Path(ruta)
+        contenido = json.dumps([asdict(a) for a in self], ensure_ascii=False, indent=2) + "\n"
+        temporal = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=ruta.parent, delete=False
+            ) as archivo:
+                temporal = Path(archivo.name)
+                archivo.write(contenido)
+            os.replace(temporal, ruta)
+        finally:
+            if temporal is not None:
+                temporal.unlink(missing_ok=True)
+
+    @classmethod
+    def cargar(cls, ruta: str | Path) -> Biblioteca:
+        """Carga una lista JSON de artículos y elimina duplicados por DOI.
+
+        Rechaza documentos mal formados antes de construir la biblioteca.
+        """
+        try:
+            datos = json.loads(Path(ruta).read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeError) as exc:
+            raise ValueError("la biblioteca no contiene JSON válido en UTF-8") from exc
+        if not isinstance(datos, list):
+            raise ValueError("la biblioteca debe ser una lista de artículos")
+        articulos = []
+        for posicion, dato in enumerate(datos, start=1):
+            try:
+                if not isinstance(dato, dict):
+                    raise ValueError("se esperaba un objeto")
+                for campo in ("title", "doi", "journal"):
+                    if not isinstance(dato.get(campo), str):
+                        raise ValueError(f"{campo} debe ser texto")
+                if not isinstance(dato.get("authors"), list) or not all(
+                    isinstance(autor, str) for autor in dato["authors"]
+                ):
+                    raise ValueError("authors debe ser una lista de nombres")
+                if type(dato.get("year")) is not int:
+                    raise ValueError("year debe ser un entero")
+                if not isinstance(dato.get("abstract", ""), str):
+                    raise ValueError("abstract debe ser texto")
+                if type(dato.get("citations", 0)) is not int:
+                    raise ValueError("citations debe ser un entero")
+                articulos.append(Articulo(**dato))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"artículo {posicion} inválido: {exc}") from exc
+        return cls(articulos)
 
 
 def _escapar(texto: str) -> str:

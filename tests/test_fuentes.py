@@ -1,4 +1,7 @@
-"""Tests de Fuente y OpenAlex. Ninguno usa la red: httpx.MockTransport responde en su lugar."""
+"""Tests de Fuente, OpenAlex y Crossref.
+
+Ninguno usa la red: httpx.MockTransport responde en su lugar.
+"""
 
 import json
 from pathlib import Path
@@ -6,16 +9,30 @@ from pathlib import Path
 import httpx
 import pytest
 
-from litmar.fuentes import Fuente, OpenAlex
+from litmar.fuentes import Crossref, EuropePMC, Fuente, OpenAlex
+from litmar.fuentes.crossref import a_articulo as crossref_a_articulo
+from litmar.fuentes.crossref import limpiar_jats
 from litmar.fuentes.openalex import reconstruir_resumen
+
+DATOS = Path(__file__).parent / "datos"
 
 # Respuesta real de
 # GET /works?search=bibliometrics citation analysis&per_page=3&select=...
 # guardada el 2026-11-17. Contiene una obra sin DOI, que debe descartarse.
-RESPUESTA_OPENALEX = json.loads(
-    (Path(__file__).parent / "datos" / "openalex_works.json").read_text(encoding="utf-8")
-)
+RESPUESTA_OPENALEX = json.loads((DATOS / "openalex_works.json").read_text(encoding="utf-8"))
+RESPUESTA_EUROPEPMC = json.loads((DATOS / "europepmc_search.json").read_text(encoding="utf-8"))
 VACIA = {"meta": {}, "results": []}
+VACIA_EUROPEPMC = {"resultList": {"result": []}}
+
+# Respuestas reales de Crossref, guardadas el 2026-11-17 con
+# GET /works?query=citation analysis bibliometrics&filter=type:journal-article
+#     &rows=4&cursor=*&sort=relevance&order=desc&select=...
+# La segunda añade has-abstract:1 al filtro y rows=2: trae un resumen en JATS
+# y una obra sin autores, que debe descartarse.
+RESPUESTA_CROSSREF = json.loads((DATOS / "crossref_works.json").read_text(encoding="utf-8"))
+RESPUESTA_CROSSREF_CON_RESUMEN = json.loads(
+    (DATOS / "crossref_works_con_resumen.json").read_text(encoding="utf-8")
+)
 
 
 def cliente(*respuestas, peticiones=None):
@@ -39,13 +56,15 @@ def cliente(*respuestas, peticiones=None):
 class FuenteDePrueba(Fuente):
     """Implementación mínima para probar los reintentos de la clase base."""
 
-    def buscar(self, consulta, n=10):
+    def buscar(self, consulta, n=10, *, desde=None):
         return self._get_json("https://ejemplo.org/api", params={"q": consulta})
 
 
-def fuente_de_prueba(*respuestas, **kwargs):
+def fuente_de_prueba(*respuestas, peticiones=None, **kwargs):
     esperas = []
-    fuente = FuenteDePrueba(client=cliente(*respuestas), sleep=esperas.append, **kwargs)
+    fuente = FuenteDePrueba(
+        client=cliente(*respuestas, peticiones=peticiones), sleep=esperas.append, **kwargs
+    )
     return fuente, esperas
 
 
@@ -116,13 +135,85 @@ def test_retry_after_como_fecha_pasada_no_espera():
     assert esperas == [0.0]
 
 
+def test_get_json_returns_parsed_dict_without_waiting():
+    fuente, esperas = fuente_de_prueba({"ok": True})
+    assert fuente.buscar("x") == {"ok": True}
+    assert esperas == []
+
+
+def test_get_json_propagates_invalid_json_without_retrying():
+    fuente, esperas = fuente_de_prueba(httpx.Response(200, text="not-json"))
+    with pytest.raises(json.JSONDecodeError):
+        fuente.buscar("x")
+    assert esperas == []
+
+
+def test_get_json_forwards_params_and_headers():
+    peticiones = []
+    fuente, esperas = fuente_de_prueba({"ok": True}, peticiones=peticiones)
+    fuente._get_json("https://ejemplo.org/api", params={"q": "x"}, headers={"X-Test": "1"})
+    (peticion,) = peticiones
+    assert peticion.url.params["q"] == "x"
+    assert peticion.headers["x-test"] == "1"
+    assert esperas == []
+
+
+def test_get_returns_raw_response_and_forwards_params_and_headers():
+    peticiones = []
+    fuente, esperas = fuente_de_prueba({"ok": True}, peticiones=peticiones)
+    respuesta = fuente._get("https://ejemplo.org/api", params={"q": "x"}, headers={"X-Test": "1"})
+    assert isinstance(respuesta, httpx.Response)
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {"ok": True}
+    (peticion,) = peticiones
+    assert peticion.url.params["q"] == "x"
+    assert peticion.headers["x-test"] == "1"
+    assert esperas == []
+
+
+def test_get_retries_429_and_returns_raw_response():
+    peticiones = []
+    esperas = []
+    fuente = FuenteDePrueba(
+        client=cliente(httpx.Response(429), {"ok": True}, peticiones=peticiones),
+        sleep=esperas.append,
+    )
+    respuesta = fuente._get("https://ejemplo.org/api")
+    assert respuesta.json() == {"ok": True}
+    assert len(peticiones) == 2
+    assert esperas == [1.0]
+
+
+def test_get_exhausts_retries_and_raises_status_error():
+    fuente, esperas = fuente_de_prueba(*[httpx.Response(503)] * 3, max_retries=2)
+    with pytest.raises(httpx.HTTPStatusError):
+        fuente._get("https://ejemplo.org/api")
+    assert len(esperas) == 2
+
+
+def test_close_only_closes_owned_client():
+    propia = FuenteDePrueba()  # no client injected: Fuente creates and owns it
+    owned_client = propia.client
+    propia.close()
+    assert owned_client.is_closed
+
+    borrowed_client = cliente({"ok": True})
+    prestada = FuenteDePrueba(client=borrowed_client)
+    prestada.close()
+    assert not borrowed_client.is_closed
+    borrowed_client.close()
+
+
 # --- OpenAlex -----------------------------------------------------------------
 
 
 def test_openalex_convierte_respuesta_guardada():
     articulos = OpenAlex(client=cliente(RESPUESTA_OPENALEX)).buscar("bibliometrics", n=2)
 
-    assert [a.doi for a in articulos] == ["10.1515/libr.1996.46.3.149", "10.1016/j.jbusres.2016.11.009"]
+    assert [a.doi for a in articulos] == [
+        "10.1515/libr.1996.46.3.149",
+        "10.1016/j.jbusres.2016.11.009",
+    ]
     primero = articulos[0]
     assert primero.title.startswith("Bibliometrics, Citation Analysis and Co-Citation Analysis")
     assert primero.authors == ("Farideh Osareh",)
@@ -150,7 +241,9 @@ def test_openalex_parametros_de_la_peticion():
 
 def test_openalex_envia_la_clave_en_cabecera_y_no_en_la_url():
     peticiones = []
-    OpenAlex(api_key="secreta", client=cliente(RESPUESTA_OPENALEX, peticiones=peticiones)).buscar("x", n=2)
+    OpenAlex(api_key="secreta", client=cliente(RESPUESTA_OPENALEX, peticiones=peticiones)).buscar(
+        "x", n=2
+    )
     assert peticiones[0].headers["authorization"] == "Bearer secreta"
     assert "secreta" not in str(peticiones[0].url)
 
@@ -158,7 +251,9 @@ def test_openalex_envia_la_clave_en_cabecera_y_no_en_la_url():
 def test_openalex_pide_otra_pagina_si_descarta_obras():
     # Con n=3 la página trae 3 obras, pero una no tiene DOI: hay que pedir la página 2.
     peticiones = []
-    articulos = OpenAlex(client=cliente(RESPUESTA_OPENALEX, VACIA, peticiones=peticiones)).buscar("x", n=3)
+    articulos = OpenAlex(client=cliente(RESPUESTA_OPENALEX, VACIA, peticiones=peticiones)).buscar(
+        "x", n=3
+    )
     assert len(articulos) == 2
     assert [p.url.params["page"] for p in peticiones] == ["1", "2"]
 
@@ -180,6 +275,298 @@ def test_openalex_hereda_los_reintentos():
 
 
 def test_reconstruir_resumen():
-    indice = {"in": [3, 5], "Despite": [0], "growing": [1], "interest": [2], "AI": [4], "ethics": [6]}
+    indice = {
+        "in": [3, 5],
+        "Despite": [0],
+        "growing": [1],
+        "interest": [2],
+        "AI": [4],
+        "ethics": [6],
+    }
     assert reconstruir_resumen(indice) == "Despite growing interest in AI in ethics"
     assert reconstruir_resumen(None) == ""
+
+
+# --- Crossref -----------------------------------------------------------------
+
+
+def pagina_crossref(items, siguiente="siguiente"):
+    return {"status": "ok", "message": {"items": items, "next-cursor": siguiente}}
+
+
+def item_crossref(i, **cambios):
+    item = {
+        "DOI": f"10.9999/{i}",
+        "title": [f"Obra {i}"],
+        "author": [{"family": "García", "given": "Ana"}],
+        "issued": {"date-parts": [[2020, 5]]},
+        "container-title": ["Revista de Pruebas"],
+    }
+    item.update(cambios)
+    return item
+
+
+def test_crossref_convierte_respuesta_guardada():
+    articulos = Crossref(client=cliente(RESPUESTA_CROSSREF)).buscar("bibliometrics", n=4)
+
+    assert [a.doi for a in articulos] == [
+        "10.1515/libr.1996.46.3.149",
+        "10.1515/libr.1996.46.4.217",
+        "10.1007/s11192-010-0159-y",
+        "10.12775/tsb.2012.009",
+    ]
+    primero = articulos[0]
+    assert (
+        primero.title
+        == "Bibliometrics, Citation Analysis and Co-Citation Analysis: A Review of Literature I"
+    )
+    assert primero.authors == ("OSAREH, FARIDEH",)  # mayúsculas tal como las envía la editorial
+    assert primero.year == 1996
+    assert primero.journal == "Libri"
+    assert primero.citations == 269
+    assert primero.abstract == ""
+    assert articulos[2].authors == ("Vinkler, P.",)
+    assert articulos[2].year == 2010  # issued = [[2010, 1, 23]]
+    assert articulos[3].short_citation == "Żarczyńska (2012)"
+    assert articulos[3].journal == "Toruńskie Studia Bibliologiczne"
+
+
+def test_crossref_limpia_resumen_jats_y_descarta_obras_sin_autores():
+    # La página viene llena (2 de 2) pero se descarta una obra: se pide la siguiente.
+    peticiones = []
+    respuestas = (RESPUESTA_CROSSREF_CON_RESUMEN, pagina_crossref([], siguiente=None))
+    articulos = Crossref(client=cliente(*respuestas, peticiones=peticiones)).buscar("x", n=2)
+
+    assert len(peticiones) == 2
+    (articulo,) = articulos  # la segunda obra no tiene autores
+    assert articulo.doi == "10.4000/cybergeo.15463"
+    assert articulo.authors == ("Kosmopoulos, Christine", "Pumain, Denise")
+    assert articulo.abstract.startswith("La numérisation des ressources documentaires")
+    assert "<" not in articulo.abstract
+
+
+def test_crossref_parametros_de_la_peticion():
+    peticiones = []
+    Crossref(client=cliente(RESPUESTA_CROSSREF, peticiones=peticiones)).buscar("deep learning", n=4)
+
+    (peticion,) = peticiones
+    assert peticion.url.host == "api.crossref.org"
+    assert peticion.url.path == "/works"
+    params = peticion.url.params
+    assert params["query"] == "deep learning"
+    assert params["filter"] == "type:journal-article"
+    assert params["rows"] == "4"
+    assert params["cursor"] == "*"
+    # Sin orden explícito, con cursor los resultados dejan de ir por relevancia.
+    assert (params["sort"], params["order"]) == ("relevance", "desc")
+    assert "abstract" in params["select"].split(",")
+    assert "mailto" not in params  # el correo solo se envía si se configura
+
+
+def test_crossref_mailto_opcional():
+    peticiones = []
+    Crossref(
+        mailto="yo@ejemplo.org", client=cliente(RESPUESTA_CROSSREF, peticiones=peticiones)
+    ).buscar("x", n=4)
+    assert peticiones[0].url.params["mailto"] == "yo@ejemplo.org"
+
+
+def test_crossref_sigue_el_cursor_si_descarta_obras():
+    # Página llena (rows=2) con una obra sin DOI: hay que pedir la siguiente con el cursor.
+    peticiones = []
+    respuestas = (
+        pagina_crossref([item_crossref(1, DOI=None), item_crossref(2)], siguiente="c2"),
+        pagina_crossref([item_crossref(3), item_crossref(4)], siguiente="c3"),
+    )
+    articulos = Crossref(client=cliente(*respuestas, peticiones=peticiones)).buscar("x", n=2)
+    assert [a.doi for a in articulos] == ["10.9999/2", "10.9999/3"]
+    assert [p.url.params["cursor"] for p in peticiones] == ["*", "c2"]
+
+
+def test_crossref_para_con_pagina_incompleta():
+    peticiones = []
+    articulos = Crossref(
+        client=cliente(pagina_crossref([item_crossref(1)]), peticiones=peticiones)
+    ).buscar("x", n=5)
+    assert len(articulos) == 1
+    assert len(peticiones) == 1
+
+
+def test_crossref_para_sin_siguiente_cursor():
+    peticiones = []
+    respuesta = pagina_crossref([item_crossref(1, DOI=None), item_crossref(2)], siguiente=None)
+    articulos = Crossref(client=cliente(respuesta, peticiones=peticiones)).buscar("x", n=2)
+    assert len(articulos) == 1
+    assert len(peticiones) == 1
+
+
+def test_crossref_no_devuelve_mas_de_n():
+    assert len(Crossref(client=cliente(RESPUESTA_CROSSREF)).buscar("x", n=1)) == 1
+
+
+def test_crossref_n_invalido():
+    with pytest.raises(ValueError):
+        Crossref(client=cliente()).buscar("x", n=0)
+
+
+def test_crossref_hereda_los_reintentos():
+    esperas = []
+    fuente = Crossref(client=cliente(httpx.Response(429), RESPUESTA_CROSSREF), sleep=esperas.append)
+    assert len(fuente.buscar("x", n=4)) == 4
+    assert esperas == [1.0]
+
+
+@pytest.mark.parametrize(
+    "cambios",
+    [
+        {"DOI": None},
+        {"title": None},
+        {"title": []},
+        {"title": ["  "]},
+        {"author": []},
+        {"author": [{"given": "Ana"}]},  # sin apellido ni nombre de organización
+        {"issued": None},
+        {"issued": {"date-parts": [[None]]}},
+        {"DOI": "no-es-un-doi"},
+    ],
+)
+def test_crossref_descarta_obras_incompletas(cambios):
+    assert crossref_a_articulo(item_crossref(1, **cambios)) is None
+
+
+@pytest.mark.parametrize(
+    ("autor", "esperado"),
+    [
+        ({"family": "García Márquez", "given": "Gabriel"}, "García Márquez, Gabriel"),
+        ({"family": "García"}, "García"),
+        ({"name": "WHO Study Group"}, "WHO Study Group"),
+    ],
+)
+def test_crossref_formatos_de_autor(autor, esperado):
+    assert crossref_a_articulo(item_crossref(1, author=[autor])).authors == (esperado,)
+
+
+def test_crossref_campos_opcionales_ausentes():
+    item = item_crossref(1)
+    del item["container-title"]
+    articulo = crossref_a_articulo(item)
+    assert articulo.journal == ""
+    assert articulo.abstract == ""
+    assert articulo.citations == 0
+
+
+def test_limpiar_jats():
+    assert limpiar_jats("<jats:title>Abstract</jats:title><jats:p>Texto.</jats:p>") == "Texto."
+    assert (
+        limpiar_jats(
+            "<jats:sec><jats:title>Methods</jats:title>"
+            "<jats:p>Uso de <jats:italic>R</jats:italic> &amp; Python.</jats:p></jats:sec>"
+        )
+        == "Methods: Uso de R & Python."
+    )
+    assert limpiar_jats("<jats:p>Uno.</jats:p><jats:p>Dos.</jats:p>") == "Uno. Dos."
+    assert limpiar_jats("") == ""
+
+
+# --- EuropePMC ----------------------------------------------------------------
+
+
+def test_europepmc_convierte_respuesta_guardada():
+    articulos = EuropePMC(client=cliente(RESPUESTA_EUROPEPMC)).buscar("malaria", n=3)
+
+    assert len(articulos) == 3
+    # Comprobar que descarta la obra sin DOI y obtiene las 3 válidas
+    assert [a.doi for a in articulos] == [
+        "10.4269/ajtmh.26-0338",
+        "10.64898/2026.09.28.26363670",
+        "10.1038/s41590-026-02610-7",
+    ]
+    primero = articulos[0]
+    assert primero.title.startswith("Status of Malaria Vaccine Introduction")
+    assert primero.year == 2026
+    assert primero.journal == "The American journal of tropical medicine and hygiene"
+    assert primero.short_citation == "Ly et al. (2026)"
+
+    # Preprint sin journal
+    assert articulos[1].journal == ""
+    assert articulos[1].short_citation == "Wood et al. (2026)"
+
+    # Un solo autor
+    assert articulos[2].authors == ("Bernard, Nicholas J",)
+    assert articulos[2].short_citation == "Bernard (2026)"
+
+
+def test_europepmc_parametros_de_la_peticion():
+    peticiones = []
+    EuropePMC(client=cliente(RESPUESTA_EUROPEPMC, peticiones=peticiones)).buscar("cancer", n=2)
+
+    (peticion,) = peticiones
+    assert peticion.url.host == "www.ebi.ac.uk"
+    assert peticion.url.path == "/europepmc/webservices/rest/search"
+    params = peticion.url.params
+    assert params["query"] == "cancer"
+    assert params["format"] == "json"
+    assert params["resultType"] == "core"
+    assert params["cursorMark"] == "*"
+
+
+def test_europepmc_pide_otra_pagina_si_descarta_obras():
+    # Página 1 tiene 2 obras pero una no tiene DOI (queda 1 válida).
+    # Si pedimos n=2, pide la página 2 con cursorMark.
+    pagina_1 = {
+        "nextCursorMark": "cursor_2",
+        "resultList": {
+            "result": [
+                {
+                    "title": "Valid Article 1",
+                    "doi": "10.1000/1",
+                    "pubYear": "2023",
+                    "authorList": {"author": [{"lastName": "Garcia", "firstName": "Ana"}]},
+                },
+                {
+                    "title": "Invalid No DOI",
+                    "pubYear": "2023",
+                    "authorList": {"author": [{"lastName": "Perez", "firstName": "Juan"}]},
+                },
+            ]
+        },
+    }
+    pagina_2 = {
+        "nextCursorMark": "cursor_3",
+        "resultList": {
+            "result": [
+                {
+                    "title": "Valid Article 2",
+                    "doi": "10.1000/2",
+                    "pubYear": "2023",
+                    "authorList": {"author": [{"lastName": "Lopez", "firstName": "Carlos"}]},
+                }
+            ]
+        },
+    }
+    peticiones = []
+    articulos = EuropePMC(client=cliente(pagina_1, pagina_2, peticiones=peticiones)).buscar(
+        "x", n=2
+    )
+    assert len(articulos) == 2
+    assert len(peticiones) == 2
+    assert peticiones[0].url.params["cursorMark"] == "*"
+    assert peticiones[1].url.params["cursorMark"] == "cursor_2"
+
+
+def test_europepmc_no_devuelve_mas_de_n():
+    assert len(EuropePMC(client=cliente(RESPUESTA_EUROPEPMC)).buscar("x", n=1)) == 1
+
+
+def test_europepmc_n_invalido():
+    with pytest.raises(ValueError):
+        EuropePMC(client=cliente()).buscar("x", n=0)
+
+
+def test_europepmc_hereda_los_reintentos():
+    esperas = []
+    fuente = EuropePMC(
+        client=cliente(httpx.Response(429), RESPUESTA_EUROPEPMC), sleep=esperas.append
+    )
+    assert len(fuente.buscar("x", n=2)) == 2
+    assert esperas == [1.0]

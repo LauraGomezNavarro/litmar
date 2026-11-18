@@ -58,13 +58,16 @@ class Articulo:
         object.__setattr__(self, "doi", normalizar_doi(self.doi))
 
     @property
-    def short_citation(self) -> str:
-        """Cita en texto: «García (2021)», «García y López (2021)» o «García et al. (2021)»."""
+    def short_authors(self) -> str:
+        """Autores abreviados: «García», «García y López» o «García et al.»."""
         apellidos = [apellido(a) for a in self.authors]
         if len(apellidos) == 1:
-            quien = apellidos[0]
-        elif len(apellidos) == 2:
-            quien = f"{apellidos[0]} y {apellidos[1]}"
-        else:
-            quien = f"{apellidos[0]} et al."
-        return f"{quien} ({self.year})"
+            return apellidos[0]
+        if len(apellidos) == 2:
+            return f"{apellidos[0]} y {apellidos[1]}"
+        return f"{apellidos[0]} et al."
+
+    @property
+    def short_citation(self) -> str:
+        """Cita en texto: «García (2021)», «García y López (2021)» o «García et al. (2021)»."""
+        return f"{self.short_authors} ({self.year})"

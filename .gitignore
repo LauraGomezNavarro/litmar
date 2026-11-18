@@ -5,9 +5,15 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache/
 
 # Virtual environments
 .venv
 
-# Secretos
+# Secretos (la plantilla .env.example sí se sube)
 .env
+.env.*
+!.env.example
+
+# Configuración personal de Claude Code (no se comparte)
+.claude/settings.local.json

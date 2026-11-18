@@ -25,7 +25,12 @@ def test_cita_corta_sin_coma_usa_ultima_palabra(hacer_articulo):
 
 @pytest.mark.parametrize(
     "doi",
-    ["10.1000/XYZ123", "https://doi.org/10.1000/xyz123", "doi: 10.1000/xyz123", "  10.1000/xyz123 "],
+    [
+        "10.1000/XYZ123",
+        "https://doi.org/10.1000/xyz123",
+        "doi: 10.1000/xyz123",
+        "  10.1000/xyz123 ",
+    ],
 )
 def test_doi_se_normaliza(hacer_articulo, doi):
     assert hacer_articulo(doi=doi).doi == "10.1000/xyz123"

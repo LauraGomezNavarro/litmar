@@ -75,9 +75,7 @@ def test_bibtex_claves_unicas(hacer_articulo):
 
 
 def test_bibtex_escapa_caracteres_latex(hacer_articulo):
-    bibtex = Biblioteca(
-        [hacer_articulo(title="R&D al 100% {nuevo}", doi="10.1000/a_b")]
-    ).a_bibtex()
+    bibtex = Biblioteca([hacer_articulo(title="R&D al 100% {nuevo}", doi="10.1000/a_b")]).a_bibtex()
     assert r"title = {{R\&D al 100\% \{nuevo\}}}" in bibtex
     assert "doi = {10.1000/a_b}" in bibtex  # el DOI no se escapa
 
@@ -92,3 +90,25 @@ def test_exportar_bibtex(tmp_path, hacer_articulo):
 def test_obtener_con_doi_invalido_da_error():
     with pytest.raises(ValueError):
         Biblioteca().obtener("no es un doi")
+
+
+def test_csv_columnas_y_autores_en_una_celda(hacer_articulo):
+    import csv
+    import io
+
+    biblioteca = Biblioteca([hacer_articulo(title='Título con "comillas", y comas')])
+    filas = list(csv.reader(io.StringIO(biblioteca.a_csv())))
+    assert filas[0] == ["title", "authors", "year", "doi", "journal", "abstract", "citations"]
+    assert filas[1][:4] == [
+        'Título con "comillas", y comas',
+        "García, Ana; López, Juan; Pérez, Marta",
+        "2021",
+        "10.1000/xyz123",
+    ]
+    assert filas[1][6] == "42"
+
+
+def test_csv_vacio_solo_cabecera():
+    assert Biblioteca().a_csv().splitlines() == [
+        "title,authors,year,doi,journal,abstract,citations"
+    ]

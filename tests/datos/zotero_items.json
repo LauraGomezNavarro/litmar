@@ -1,0 +1,71 @@
+[
+  {
+    "key": "ABCD2345",
+    "version": 101,
+    "library": {"type": "user", "id": 123456, "name": "ejemplo"},
+    "meta": {"creatorSummary": "García y López", "parsedDate": "2021-05-03", "numChildren": 1},
+    "data": {
+      "key": "ABCD2345",
+      "version": 101,
+      "itemType": "journalArticle",
+      "title": "Aprendizaje profundo para la clasificación de textos",
+      "creators": [
+        {"creatorType": "author", "firstName": "Ana", "lastName": "García"},
+        {"creatorType": "author", "firstName": "Juan", "lastName": "López"},
+        {"creatorType": "editor", "firstName": "Marta", "lastName": "Pérez"}
+      ],
+      "abstractNote": "Un estudio sobre redes neuronales.",
+      "publicationTitle": "Revista de Informática",
+      "date": "2021-05-03",
+      "DOI": "10.1000/XYZ123",
+      "tags": []
+    }
+  },
+  {
+    "key": "EFGH6789",
+    "version": 102,
+    "library": {"type": "user", "id": 123456, "name": "ejemplo"},
+    "meta": {"creatorSummary": "Consorcio Mar", "numChildren": 0},
+    "data": {
+      "key": "EFGH6789",
+      "version": 102,
+      "itemType": "conferencePaper",
+      "title": "Observación oceánica a largo plazo",
+      "creators": [{"creatorType": "author", "name": "Consorcio Mar"}],
+      "abstractNote": "",
+      "proceedingsTitle": "Actas del Congreso de Oceanografía",
+      "date": "March 2019",
+      "DOI": "https://doi.org/10.2000/mar.2019.7",
+      "tags": []
+    }
+  },
+  {
+    "key": "IJKL0123",
+    "version": 103,
+    "library": {"type": "user", "id": 123456, "name": "ejemplo"},
+    "meta": {"creatorSummary": "Soler", "parsedDate": "2018", "numChildren": 0},
+    "data": {
+      "key": "IJKL0123",
+      "version": 103,
+      "itemType": "book",
+      "title": "Un libro sin DOI",
+      "creators": [{"creatorType": "author", "firstName": "Eva", "lastName": "Soler"}],
+      "date": "2018",
+      "tags": []
+    }
+  },
+  {
+    "key": "MNOP4567",
+    "version": 104,
+    "library": {"type": "user", "id": 123456, "name": "ejemplo"},
+    "meta": {},
+    "data": {
+      "key": "MNOP4567",
+      "version": 104,
+      "itemType": "note",
+      "parentItem": "ABCD2345",
+      "note": "<p>Apuntes de lectura</p>",
+      "tags": []
+    }
+  }
+]
