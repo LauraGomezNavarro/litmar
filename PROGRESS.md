@@ -40,18 +40,15 @@ _Actualizado: 2026-11-18._
 
 ## Próximos pasos
 
-Por orden de prioridad sugerido; nada está empezado.
+Por orden de prioridad sugerido.
 
-0. [ ] **Comprobar el arnés de memoria**. `SessionStart` **funciona**: el
-   18/11/2026, al reanudar la sesión, inyectó el estado de este fichero y de git.
-   Falta ver en una sesión real que `Stop` pide anotar el progreso cuando hay
-   trabajo sin registrar (los casos se probaron a mano con un repo de prueba).
-1. [ ] **Clase 2**: seguir el «Plan de la Clase 2» (abajo). **Antes de nada,
-   preguntar al usuario** si quiere construirlo ya (como ensayo, igual que se
-   hizo con la Clase 1 lanzando los prompts de las diapositivas en estas
-   sesiones) o dejarlo para hacerlo en directo en clase. Primer paso en
-   cualquier caso: añadir a `.env.example` `LITMAR_MODELO`, `GOOGLE_API_KEY` y
-   `ANTHROPIC_API_KEY` (D-14).
+0. [x] **Comprobar el arnés de memoria**. `SessionStart` y `Stop` funcionan en
+   sesiones reales (18/11/2026: `Stop` pidió anotar el progreso con cambios sin
+   commit).
+1. [ ] **Clase 2**: seguir el «Plan de la Clase 2» (abajo). Hechos los pasos
+   1-4 en la rama `dev-LGN` del fork (aún sin commit al cerrar la sesión 3). El
+   siguiente es el 5, el flujo LangGraph. Pendiente: volver a ejecutar
+   `ejemplos/resumir.py` cuando se recupere la cuota de Gemini.
 2. [ ] **Permisos del JSON**: `Biblioteca.guardar` deja `0600`; aplicar la umask
    con `os.chmod` antes de `os.replace`. Propuesto en la PR #10.
 3. [ ] **Mover el helper `cliente` de `tests/test_fuentes.py` a `conftest.py`**,
