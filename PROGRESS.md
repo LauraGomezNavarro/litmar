@@ -21,7 +21,7 @@ _Actualizado: 2026-11-19._
   La Clase 3 (*APIs, reproducibilidad y transferencia*, **19/11/2026**) tiene
   sus diapositivas en `docs/Clase3.pdf` y su plan abajo; hechos los encargos 1
   (API con FastAPI y `litmar servir`), 2 (web en `/`), 4 (`Dockerfile`) y 5
-  (`compose.yaml`); 4 y 5 sin probar con Docker (no hay en la máquina).
+  (`compose.yaml`), probados con Docker (Colima) el 19/11.
 - **Calidad**: 373 tests pasan, sin red, en ~3 s; `ruff check` y
   `ruff format --check` en verde.
 - **PRs abiertas**: ninguna.
@@ -59,7 +59,7 @@ _Actualizado: 2026-11-19._
     enlazados, revisión con el informe en Markdown renderizado y descarga del
     BibTeX; sin npm, rutas relativas;
   - Docker: `Dockerfile` (D-27) y `compose.yaml` con api + nginx (D-26);
-    escritos y simulados sin Docker, falta `docker compose up --build`;
+    probados con `docker compose up --build` (imagen de 474 MB);
   - configuración por `.env` (plantilla en `.env.example`; todo opcional salvo
     Zotero).
 
@@ -221,8 +221,7 @@ encargo», cómo seguir).
    `/` y `/docs`, F12 > Red, provocar un 422, pedir a la IA una mejora o una
    ruta nueva (exportar en BibTeX) con su test. Puede convenir tener hecha la
    ruta de BibTeX como referencia (sin integrarla).
-4. [x] **Dockerfile** (diapositivas 19-20; escrito el 19/11, D-27; sin probar con
-   Docker). Prompt: «Crea un Dockerfile para
+4. [x] **Dockerfile** (diapositivas 19-20; hecho y probado el 19/11, D-27). Prompt: «Crea un Dockerfile para
    litmar usando uv con la imagen oficial de Astral y Python 3.12 slim. Instala
    las dependencias desde uv.lock antes de copiar el código para aprovechar la
    caché, sin dependencias de desarrollo (pytest, ruff y Streamlit no hacen
@@ -242,8 +241,8 @@ encargo», cómo seguir).
      **no** `README.md` (`pyproject` lo declara y `uv_build` lo necesita).
      Comprobar que `uv run` como usuario `app` no intenta reescribir `.venv`
      (propiedad de root); si lo hace, `--no-sync` o `chown`.
-5. [x] **compose.yaml con dos servicios** (diapositiva 24; escrito el 19/11, D-26;
-   sin probar: necesita una máquina con Docker). Prompt: «Crea un
+5. [x] **compose.yaml con dos servicios** (diapositiva 24; hecho y probado el 19/11,
+   D-26). Prompt: «Crea un
    compose.yaml con dos servicios: api (nuestra imagen, litmar servir en
    0.0.0.0, puerto 8000, .env al arrancar) y web (imagen oficial de nginx,
    puerto 8080) que sirva src/litmar/web y reenvíe a api las rutas de la API
@@ -273,9 +272,10 @@ encargo», cómo seguir).
    avisa de que la clave del curso caduca el 19/11 a las 14:00 y recomienda
    Gemini con plan gratuito.
 
-Requisitos en la máquina del ensayo: **Docker no está instalado** (comprobado
-el 18/11, tampoco Podman). Sin él se pueden escribir el Dockerfile y el
-compose, pero no probarlos (encargos 4-6).
+Requisitos en la máquina del ensayo: **Docker con Colima** (instalado el 19/11
+con Homebrew: `colima`, `docker`, `docker-compose`, `docker-buildx`; plugins en
+`~/.docker/config.json`). Tras reiniciar el Mac hay que hacer `colima start`
+(o `brew services start colima` para que arranque solo).
 
 ## Cabos sueltos
 
@@ -313,6 +313,27 @@ contra esto.
   proponer su hook `_antes_de_peticion` en `Fuente`.
 
 ## Registro de sesiones
+
+### 2026-11-19 — Sesión 3: Docker instalado y encargos 4 y 5 probados
+
+- El usuario eligió **Colima** (libre, sin contraseña de administrador) frente
+  a Docker Desktop y Podman. `brew install colima docker docker-compose
+  docker-buildx`, `cliPluginsExtraDirs` en `~/.docker/config.json`, `colima
+  start --cpu 4 --memory 4`. Docker 29, Compose 5.8.
+- `docker compose up --build`: imagen `litmar` de 474 MB. Comprobado:
+  - web en `:8080` (nginx) con `/fuentes`, `/buscar`, `/docs` y
+    `/openapi.json` reenviados; API en `:8000/docs`; puertos solo en 127.0.0.1;
+  - en la imagen: usuario `app`, sin `.env`, sin Streamlit ni pytest, sin
+    `__pycache__`; `LITMAR_MODELO` llega a `api` y no a `web`;
+  - `--force-recreate api` (cambia de IP): `web` sigue respondiendo sin
+    reiniciarse (el `resolver` de D-26 funciona); con `api` parada, nginx da
+    502 en HTML (la web lo muestra como «HTTP 502»);
+  - cambiar solo código: la capa de `uv sync --no-install-project` sale
+    `CACHED`, se rehace desde `COPY . .`;
+  - revisión real a través de nginx: 200 en 218 s (más de los 60 s por
+    defecto de nginx).
+- Trampa para clase: en zsh, una URL con `?` sin comillas falla («no matches
+  found»); anotada en AGENTS.md §9.
 
 ### 2026-11-19 — Sesión 3: Dockerfile (Clase 3, encargo 4)
 

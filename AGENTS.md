@@ -382,6 +382,9 @@ en `.env.example`.
   como Docker. `README.md` debe entrar en la imagen (lo pide `uv_build`).
 - **`uv run` en la imagen, como `USER app`**, intenta sincronizar `.venv` (de
   root): el `CMD` llama a `litmar` directamente con `.venv/bin` en el `PATH`.
+- **zsh y las URL con `?`**: `curl localhost:8080/buscar?consulta=x` falla con
+  «no matches found» (zsh lo toma como comodín). Pon la URL entre comillas.
+- **Docker en el Mac del ensayo es Colima**: tras reiniciar, `colima start`.
 - **nginx delante de la API**: `proxy_pass http://api:8000` resuelve el nombre
   una sola vez al arrancar (si `api` se recrea, 502); por eso se usa
   `resolver 127.0.0.11` y una variable. El tiempo de espera por defecto es 60 s
