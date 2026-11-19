@@ -242,7 +242,12 @@ encargo», cómo seguir).
      Comprobar que `uv run` como usuario `app` no intenta reescribir `.venv`
      (propiedad de root); si lo hace, `--no-sync` o `chown`.
 5. [x] **compose.yaml con dos servicios** (diapositiva 24; hecho y probado el 19/11,
-   D-26). Prompt: «Crea un
+   D-26).
+   - Demo en directo (decidido por el usuario): partir sin caché y levantar
+     dos veces seguidas para que se vea la caché de capas. Ensayo del 19/11:
+     1.ª vez 106 s (descarga Python, uv, nginx y las dependencias de PyPI),
+     2.ª vez 1 s. Para dejarlo limpio: `docker compose down`, `docker image rm
+     litmar nginx:1.30-alpine` y `docker builder prune -af`. Prompt: «Crea un
    compose.yaml con dos servicios: api (nuestra imagen, litmar servir en
    0.0.0.0, puerto 8000, .env al arrancar) y web (imagen oficial de nginx,
    puerto 8080) que sirva src/litmar/web y reenvíe a api las rutas de la API
