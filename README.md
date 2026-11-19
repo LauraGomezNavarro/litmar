@@ -307,6 +307,40 @@ curl -X POST http://127.0.0.1:8000/revisiones -H "Content-Type: application/json
 - La API no tiene autenticación: está pensada para usarla en tu ordenador o en una red
   de confianza. Quien pueda llamar a `/revisiones` gasta tu clave del modelo.
 
+## Docker
+
+Para servir litmar sin instalar Python: la API en un contenedor (`Dockerfile`) y,
+delante, nginx con la página web (`compose.yaml`).
+
+```bash
+docker compose up --build        # construye la imagen y arranca los dos servicios
+docker compose up --build -d     # igual, en segundo plano
+docker compose ps                # qué está en marcha
+docker compose logs -f api       # logs de la API (los pasos de cada revisión)
+docker compose down              # parar y borrar los contenedores
+```
+
+La web queda en <http://localhost:8080> y la API en <http://localhost:8000/docs>,
+solo para este ordenador (la API no tiene autenticación).
+
+- **Las claves no van en la imagen**: el `.env` se lee al arrancar (`env_file` en
+  `compose.yaml`) y `.dockerignore` impide copiarlo. Sin `.env` funciona la
+  búsqueda; la revisión responde 503 diciendo qué falta.
+- **Capas**: primero se instalan las dependencias de `uv.lock` y después se copia el
+  código, así que cambiar el código no vuelve a instalar las dependencias.
+- **Sin dependencias de desarrollo** (pytest, ruff, Streamlit): `litmar ui` no está
+  disponible en la imagen.
+- **Usuario sin privilegios** (`app`) y versiones fijas de Python, uv y nginx.
+- nginx (`nginx/litmar.conf`) sirve `src/litmar/web` y reenvía las rutas de la API
+  al servicio `api` por su nombre; a `/revisiones` le da 10 minutos.
+
+Solo la imagen, sin nginx:
+
+```bash
+docker build -t litmar .
+docker run --rm -p 127.0.0.1:8000:8000 --env-file .env litmar
+```
+
 ## Uso desde Python
 
 ```python

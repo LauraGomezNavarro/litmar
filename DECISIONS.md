@@ -235,3 +235,38 @@ que funcione igual instalada o en Docker. Solo usa `/fuentes`, `/buscar` y
 - Los datos de la API se pintan con `textContent`, nunca con `innerHTML`; el
   BibTeX y el informe se descargan con un `Blob`, sin otra petición. Los 422 se
   traducen campo a campo; sin JSON (p. ej. un 502 de nginx), «HTTP N».
+
+### D-26 · compose.yaml: api + nginx — 2026-11-19
+`compose.yaml` con `api` (imagen `litmar`, `build: .`, `litmar servir` en
+`0.0.0.0:8000`) y `web` (`nginx:1.30-alpine`, versión fija) con la configuración
+en `nginx/litmar.conf`, montada de solo lectura junto con `src/litmar/web`.
+- **Puertos solo en `127.0.0.1`** (`127.0.0.1:8080:80`): la API no tiene token
+  (D-24); publicarla en todas las interfaces la abriría a la red local.
+- **Rutas de la API enumeradas** en nginx (no «todo lo que no sea un fichero»):
+  se ve qué se reenvía. Un test compara la lista con `/openapi.json`, así que una
+  ruta nueva sin su línea en nginx hace fallar los tests.
+- **`/revisiones` con `proxy_read_timeout 10m`**; las demás, con los 60 s por
+  defecto.
+- **`resolver 127.0.0.11` y `proxy_pass` con variable**: nginx resuelve `api`
+  en cada petición. Con `proxy_pass http://api:8000` fijo, la IP se resuelve al
+  arrancar y, si `api` se recrea (`docker compose up --build`), `web` da 502
+  hasta reiniciarlo.
+- **`.env` con `required: false`**: sin `.env` arranca igual (buscar funciona;
+  revisar da 503 con el mensaje de qué falta). Solo lo recibe `api`.
+
+### D-27 · Dockerfile — 2026-11-19
+Sigue la diapositiva 19 (`python:3.12-slim`, uv de la imagen de Astral,
+`UV_NO_DEV=1`, dependencias de `uv.lock` antes que el código, `useradd`, `USER
+app`), con estos cambios:
+- **`CMD ["litmar", "servir", …]` con `.venv/bin` en el `PATH`**, no `uv run`:
+  como `app`, `uv run` intentaría sincronizar `.venv` (de root) y fallaría. Lo
+  recomienda también la guía de Docker de uv.
+- **uv fijo en 0.12.9**, la versión que generó `uv.lock`; Python, en `3.12-slim`
+  (los parches de seguridad siguen entrando; para fijarlo del todo, un digest).
+- `UV_PYTHON_DOWNLOADS=0`, `UV_COMPILE_BYTECODE=1`, `UV_LINK_MODE=copy` y la
+  caché de uv como `--mount=type=cache`: no queda dentro de la imagen.
+- `.dockerignore` deja fuera los `.md` de la raíz salvo `README.md` (cambian en
+  cada sesión y romperían la caché; `README.md` lo necesita `uv_build`), y los
+  ficheros de Docker y nginx por lo mismo.
+- Se mantiene la instalación editable (la de `uv sync` por defecto): permite la
+  variante de desarrollo de `compose.yaml` (montar `./src` sobre `/app/src`).

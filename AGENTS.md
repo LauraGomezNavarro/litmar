@@ -157,7 +157,7 @@ del Mar, tres clases, imparte Roberto Bada). Las diapositivas están en `docs/`
 
 ```bash
 uv sync                          # instala todo, incluido el grupo dev (pytest, ruff, streamlit)
-uv run pytest                    # tests (sin red; ~343, ~3 s)
+uv run pytest                    # tests (sin red; ~373, ~3 s)
 uv run ruff check --fix          # lint (reglas E, W, F, I, UP, B; línea de 100)
 uv run ruff format               # formato
 uv run litmar --help             # CLI
@@ -224,6 +224,9 @@ src/litmar/
     base.py          Fuente (ABC): buscar(consulta, n, *, desde=None) abstracto;
                      _admite (validez + año); _get/_get_json con reintentos
     openalex.py crossref.py europepmc.py arxiv.py pangaea.py zotero.py
+Dockerfile           imagen de la API (D-27); .dockerignore: qué no entra
+compose.yaml         api (nuestra imagen) + web (nginx) (D-26)
+nginx/litmar.conf    nginx: sirve src/litmar/web y reenvía las rutas de la API
 docs/                diapositivas del curso (PDF) y flujo.md (diagrama del grafo;
                      un test comprueba que el Mermaid generado está al día)
 ejemplos/
@@ -373,6 +376,18 @@ en `.env.example`.
   que convierte «openalex» en «OpenAlex») no se aplica al valor por defecto de un
   `Query` o de un campo Pydantic. Hace falta `validate_default=True`; si no, el
   nombre sin convertir llega a `crear_fuente` y la fuente «falla».
+- **`.dockerignore` no es `.gitignore`**: un patrón sin `**/` solo vale en la
+  raíz (`__pycache__` no excluye `src/litmar/__pycache__`; hace falta
+  `**/__pycache__`), y `*` no cruza `/`. `tests/test_docker.py` lo interpreta
+  como Docker. `README.md` debe entrar en la imagen (lo pide `uv_build`).
+- **`uv run` en la imagen, como `USER app`**, intenta sincronizar `.venv` (de
+  root): el `CMD` llama a `litmar` directamente con `.venv/bin` en el `PATH`.
+- **nginx delante de la API**: `proxy_pass http://api:8000` resuelve el nombre
+  una sola vez al arrancar (si `api` se recrea, 502); por eso se usa
+  `resolver 127.0.0.11` y una variable. El tiempo de espera por defecto es 60 s
+  (504 en una revisión): `/revisiones` lleva `proxy_read_timeout 10m`. Una ruta
+  nueva en la API necesita su línea en `nginx/litmar.conf` (lo vigila
+  `tests/test_compose.py`).
 - **`Retry-After: 0`** es válido: comprobar con `is None`, no con `or`.
 - **`Biblioteca.guardar`** deja el JSON con permisos `0600` (lo crea
   `NamedTemporaryFile`). Conocido, pendiente.

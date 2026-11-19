@@ -1,0 +1,34 @@
+# litmar en dos contenedores: la API (nuestra imagen) y la web (nginx).
+#   docker compose up --build    arrancar (y reconstruir la imagen si cambió algo)
+#   docker compose logs -f api   ver los logs de un servicio
+#   docker compose down          parar y borrar los contenedores
+# Web en http://localhost:8080 y API en http://localhost:8000/docs.
+
+services:
+  api:
+    build: .                # construye la imagen con el Dockerfile de esta carpeta
+    image: litmar           # y le pone este nombre (docker run litmar, docker image ls)
+    command: ["litmar", "servir", "--host", "0.0.0.0", "--puerto", "8000"]
+    env_file:               # las claves llegan al arrancar, nunca dentro de la imagen
+      - path: .env
+        required: false     # sin .env arranca igual: buscar funciona, revisar da 503
+    ports:
+      - "127.0.0.1:8000:8000"   # ordenador:contenedor; solo desde este ordenador
+    restart: unless-stopped     # si se cae, Docker lo vuelve a arrancar
+
+  web:
+    image: nginx:1.30-alpine    # imagen oficial de nginx, versión fija
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:                    # ficheros del repositorio, de solo lectura (:ro)
+      - ./src/litmar/web:/usr/share/nginx/html:ro
+      - ./nginx/litmar.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api                     # arranca después de api
+    restart: unless-stopped
+
+  # Variante de desarrollo (diapositiva 23): el código de la carpeta sustituye al de
+  # la imagen y el servidor se reinicia al guardar. Añádelo al servicio api:
+  #   volumes:
+  #     - ./src:/app/src
+  #   command: ["litmar", "servir", "--host", "0.0.0.0", "--puerto", "8000", "--recargar"]

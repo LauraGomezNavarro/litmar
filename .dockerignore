@@ -1,0 +1,44 @@
+# Lo que NO se envía a Docker al construir la imagen (no entra en `COPY . .`).
+
+# Secretos: nunca dentro de la imagen. Se pasan al arrancar el contenedor.
+.env
+.env.*
+!.env.example
+
+# El entorno virtual de tu ordenador: binarios de macOS o Windows que no
+# funcionan en Linux. La imagen crea el suyo con uv sync.
+.venv
+
+# Historial de git y configuración de herramientas: no hacen falta para ejecutar.
+.git
+.gitignore
+.claude/
+
+# Cachés y restos de compilación. Ojo: en .dockerignore (a diferencia de
+# .gitignore) un patrón solo vale en la raíz; «**/» lo aplica en cualquier carpeta.
+**/__pycache__
+**/*.py[oc]
+**/.DS_Store
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info
+
+# Lo que no se usa en el servidor: tests, diapositivas (PDF) y ejemplos
+# (incluidas las revisiones guardadas, que pueden ser de cada alumno).
+tests/
+docs/
+ejemplos/
+
+# Documentación del proyecto (los .md de la raíz): cambia en cada sesión y, si
+# entrara, rompería la caché de la capa del código. README.md sí entra:
+# pyproject.toml lo declara y uv lo necesita para instalar litmar.
+*.md
+!README.md
+
+# Ficheros de Docker: cambiarlos no debe obligar a rehacer la capa del código.
+Dockerfile
+.dockerignore
+compose.yaml
+nginx/

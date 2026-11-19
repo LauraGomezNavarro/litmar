@@ -20,8 +20,9 @@ _Actualizado: 2026-11-19._
   votación (7) se hace en clase, probados con un modelo real (Anthropic).
   La Clase 3 (*APIs, reproducibilidad y transferencia*, **19/11/2026**) tiene
   sus diapositivas en `docs/Clase3.pdf` y su plan abajo; hechos los encargos 1
-  (API con FastAPI y `litmar servir`) y 2 (web en `/`).
-- **Calidad**: 343 tests pasan, sin red, en ~3 s; `ruff check` y
+  (API con FastAPI y `litmar servir`), 2 (web en `/`), 4 (`Dockerfile`) y 5
+  (`compose.yaml`); 4 y 5 sin probar con Docker (no hay en la máquina).
+- **Calidad**: 373 tests pasan, sin red, en ~3 s; `ruff check` y
   `ruff format --check` en verde.
 - **PRs abiertas**: ninguna.
 - **Funciona**:
@@ -57,6 +58,8 @@ _Actualizado: 2026-11-19._
   - web en `/` (`src/litmar/web/index.html`, D-25): búsqueda, tabla con DOI
     enlazados, revisión con el informe en Markdown renderizado y descarga del
     BibTeX; sin npm, rutas relativas;
+  - Docker: `Dockerfile` (D-27) y `compose.yaml` con api + nginx (D-26);
+    escritos y simulados sin Docker, falta `docker compose up --build`;
   - configuración por `.env` (plantilla en `.env.example`; todo opcional salvo
     Zotero).
 
@@ -218,7 +221,8 @@ encargo», cómo seguir).
    `/` y `/docs`, F12 > Red, provocar un 422, pedir a la IA una mejora o una
    ruta nueva (exportar en BibTeX) con su test. Puede convenir tener hecha la
    ruta de BibTeX como referencia (sin integrarla).
-4. [ ] **Dockerfile** (diapositivas 19-20). Prompt: «Crea un Dockerfile para
+4. [x] **Dockerfile** (diapositivas 19-20; escrito el 19/11, D-27; sin probar con
+   Docker). Prompt: «Crea un Dockerfile para
    litmar usando uv con la imagen oficial de Astral y Python 3.12 slim. Instala
    las dependencias desde uv.lock antes de copiar el código para aprovechar la
    caché, sin dependencias de desarrollo (pytest, ruff y Streamlit no hacen
@@ -238,7 +242,8 @@ encargo», cómo seguir).
      **no** `README.md` (`pyproject` lo declara y `uv_build` lo necesita).
      Comprobar que `uv run` como usuario `app` no intenta reescribir `.venv`
      (propiedad de root); si lo hace, `--no-sync` o `chown`.
-5. [ ] **compose.yaml con dos servicios** (diapositiva 24). Prompt: «Crea un
+5. [x] **compose.yaml con dos servicios** (diapositiva 24; escrito el 19/11, D-26;
+   sin probar: necesita una máquina con Docker). Prompt: «Crea un
    compose.yaml con dos servicios: api (nuestra imagen, litmar servir en
    0.0.0.0, puerto 8000, .env al arrancar) y web (imagen oficial de nginx,
    puerto 8080) que sirva src/litmar/web y reenvíe a api las rutas de la API
@@ -308,6 +313,41 @@ contra esto.
   proponer su hook `_antes_de_peticion` en `Fuente`.
 
 ## Registro de sesiones
+
+### 2026-11-19 — Sesión 3: Dockerfile (Clase 3, encargo 4)
+
+- `Dockerfile` y `.dockerignore` (D-27), comentados línea a línea. Cambio
+  respecto a la d. 19: `CMD` con `litmar` del `PATH` en vez de `uv run`, que
+  como `app` intentaría reescribir `.venv`.
+- Sin Docker, se simuló la construcción: se copió el contexto aplicando las
+  reglas de `.dockerignore` como Docker y se repitieron los dos `uv sync` con
+  las mismas variables. Entra solo código, web, `pyproject.toml`, `uv.lock`,
+  `.python-version`, README y `.env.example`; quedan fuera pytest, ruff y
+  Streamlit; `litmar servir` arranca sin `.env` (`/salud`, `/`, `/buscar`; 503
+  en `/revisiones`) y `litmar ui` da un error claro.
+- La simulación destapó una trampa propia: `__pycache__/` en `.dockerignore`
+  solo excluye en la raíz (no es `.gitignore`). Corregido con `**/` y anotado
+  en AGENTS.md §9. `tests/test_docker.py` (24 tests) interpreta el
+  `.dockerignore` como Docker y comprueba el orden de capas, `USER app`, ninguna
+  clave en `ENV`/`ARG` y el `CMD`.
+- README: sección «Docker» (compose y `docker run` solo con la imagen).
+- Falta: `docker compose up --build` en una máquina con Docker y la revisión
+  «como experto en seguridad y reproducibilidad» de la d. 20 (se hace en clase).
+
+### 2026-11-19 — Sesión 3: `compose.yaml` con api y nginx (Clase 3, encargo 5)
+
+- El usuario pidió el encargo 5 antes que el 4: **no hay `Dockerfile`**, así
+  que `api` (`build: .`) todavía no se puede construir. Tampoco hay Docker ni
+  Podman en la máquina: nada de esto se ha arrancado.
+- `compose.yaml` y `nginx/litmar.conf` (D-26): puertos solo en `127.0.0.1`,
+  rutas de la API enumeradas, `/revisiones` con 10 min de espera, `resolver` de
+  Docker para que `web` sobreviva a que `api` se recree, `.env` opcional y solo
+  para `api`. Variante de desarrollo comentada (montar `./src`, `--recargar`);
+  depende de que el Dockerfile use `WORKDIR /app`.
+- `tests/test_compose.py` (6 tests, sin Docker): nginx reenvía exactamente las
+  rutas de `/openapi.json` más `/docs` y `/openapi.json`; espera ≥ 5 min en
+  `/revisiones`; `api` en `0.0.0.0:8000`; `.env` solo en `api`; los volúmenes
+  existen y son de solo lectura. 349 tests en total.
 
 ### 2026-11-19 — Sesión 3: web en HTML y JavaScript (Clase 3, encargo 2)
 
